@@ -1,7 +1,3 @@
-#include <bitmap.h>
-#include <Configuration_Settings.h>
-
-
 //project scope
 //create display LCD that cycles through cpu temperature, load and frequency by pushing a button
 //note:: this project is HEAVILY based off of copy/paste code
@@ -21,6 +17,12 @@
 //going to look into a solution using python now.
 //python program will be easily cross compatible, as opposed to hardwareserialmonitor which runs off of a lot of c++
 
+//python solution finally solved for cpu temperature handling issue, had to find my own workaround. not sure why display isn't producing anything now though... something in the way of instruction
+//serialevent not completing the string inside of it, not letting loop run --------- need to review loop and serial event reading current data
+//not sure why stringComplete isn't going through, need to look into it more and find out exactly how loops work
+
+
+
 #include <Adafruit_GFX.h>  
 #include <Adafruit_SSD1306.h> 
 
@@ -32,12 +34,28 @@ Adafruit_SSD1306 display;
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
-//variables
+//variables---------------------------------------------------------------------
 String inputString = "";
 boolean stringComplete = false;
 boolean activeConn = false;
 long lastActiveConn = 0;
 
+const byte numChars = 32;
+char receivedChars[numChars];
+char tempChars[numChars];
+
+char cpuUsage[numChars];
+char cpuTemp[numChars];
+char ramUsed[numChars];
+char ramTotal[numChars];
+char gpuUsage[numChars];
+char gpuTemp[numChars];
+char* ramUsage;
+char* gpuTotal;
+char* cpuTotal;
+
+
+//----------------------------------------------------------------------------
 void setup()  
 {                
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); 
@@ -50,110 +68,129 @@ void setup()
   inputString.reserve(200);
 }  
 
+//main loop----------------------------------------------------------------------------
 void loop() 
 {
   serialEvent();
   #ifdef enableActivityChecker;
     activityChecker();
   #endif
-
-  //display.clearDisplay();
-  
   lastActiveConn = millis();
   
+  if (stringComplete) {
+    display.setCursor(25,25);
+    display.println("suck my balls mate");
+    display.display();
+    strcpy(tempChars, receivedChars);
+    parseData();
+    cpupercent();
+    stringComplete = false;
+    free(ramUsage);
+    free(gpuTotal);
+    free(cpuTotal);
+  }
   
-  functionS();
-
   inputString = "";
-  stringComplete = false;
+  delay(100);
   
 }
-//pulling functions here from displaystyle1
 
-
-void functionS()
-{
-  display.fillRect(20,11,90,16,BLACK);
-  
-  int cpuStringStart = inputString.indexOf("C");
-  //modified code to limit to 4 maximum characters, at least i think i did -- update, this did nothing at all
-  //aiming to remove the instances that are not temperatures
-  int cpuDegree = inputString.indexOf("c");
-  int cpuStringLimit = inputString.indexOf("|"); 
-  
-  String cpuString1 = inputString.substring(cpuStringStart + 1, cpuDegree);
-  String cpuString2 = inputString.substring(cpuDegree + 1, cpuStringLimit - 1);
-
-  
-  display.setFont(&FreeSans9pt7b); 
-  display.setTextSize(0);
-  display.setCursor(0,15);
-  display.println("T");
-  display.setCursor(25,25);
-  display.print(cpuString1);
-  
-  #ifdef noDegree
-    display.print("C");
-  #else
-    display.print((char)247);
-    display.print("C");
-  #endif
-
-//adding all of the other arguments underneath, however I won't print them and see what happens
- 
-//  String cpuName = "";
-//  int cpuNameStart = inputString.indexOf("CPU:");
-//  int gpuNameStart = inputString.indexOf("GPU:");
-//  int gpuNameEnd = inputString.indexOf("|", gpuNameStart);
-//  String gpuName = inputString.substring(gpuNameStart, gpuNameEnd);
-//    
-//  int cpuCoreClockStart = inputString.indexOf("CHC") + 3;
-//  int cpuCoreClockEnd = inputString.indexOf("|", cpuCoreClockStart);
-//  String cpuClockString = inputString.substring(cpuCoreClockStart, cpuCoreClockEnd);
-//
-//  int gpuCoreClockStart = inputString.indexOf("GCC") + 3;
-//  int gpuCoreClockEnd = inputString.indexOf("|", gpuCoreClockStart);
-//  String gpuCoreClockString = inputString.substring(gpuCoreClockStart, gpuCoreClockEnd);
-//
-//  int gpuMemClockStart = inputString.indexOf("GMC") + 3;
-//  int gpuMemClockEnd = inputString.indexOf("|", gpuMemClockStart);
-//  String gpuMemClockString = inputString.substring(gpuMemClockStart, gpuMemClockEnd);
-//
-//  int gpuShaderClockStart = inputString.indexOf("GSC") + 3;
-//  int gpuShaderClockEnd = inputString.indexOf("|", gpuShaderClockStart);
-//  String gpuShaderClockString = inputString.substring(gpuShaderClockStart, gpuShaderClockEnd);
-//
-//  int gpuStringStart = inputString.indexOf("G", cpuStringLimit);
-//  int gpuDegree = inputString.indexOf("c", gpuStringStart);
-//  int gpuStringLimit = inputString.indexOf("|", gpuStringStart);
-//  String gpuString1 = inputString.substring(gpuStringStart + 1, gpuDegree);
-//  String gpuString2 = inputString.substring(gpuDegree + 1, gpuStringLimit - 1);
-
- 
-  
-  display.display();
-  
-}
 
 //----------------------------serial events, activity checker all copied directly from gnatstats, few parts removed
 
 //serial events
 void serialEvent()
 {
+  static boolean inProgress = false;
+  static byte index = 0;
+  char startMarker = '*';
+  char endMarker = '^';
+  char curr;
   
-  while (Serial.available()) {
-    char inChar = (char)Serial.read();
-    Serial.print(Serial.read());
-    inputString += inChar;
-    if (inChar == '|') {
-      stringComplete = true;
-      
-    }
+  while (Serial.available() > 0 && stringComplete == false) {
+    curr = Serial.read();
+    if (inProgress) {
+      if (curr != endMarker) {
+        receivedChars[index] = curr;
+        index++;
+      }
+      else {
+        receivedChars[index] = '\0';
+        inProgress = false;
+        index = 0;
+        stringComplete = true;
+      }
+    } 
+    else if (curr == startMarker) inProgress = true;
   }
 }
 
+//direct copy------------------------------------------------------------
+void parseData() {
+  char* index;
 
-//activity checker, copied directly from gnatstats, removed rotation stuff
+  index = strtok(tempChars, ",");
+  strcpy(cpuUsage, index);
+  strcat(cpuUsage, "%");
+
+  index = strtok(NULL, ",");
+  strcpy(cpuTemp, index);
+  strcat(cpuTemp, "C");
+
+  index = strtok(NULL, ",");
+  strcpy(ramUsed, index);
+  strcat(ramUsed, "/");
+
+  index = strtok(NULL, ",");
+  strcpy(ramTotal, index);
+  strcat(ramTotal, " GB");
+
+  index = strtok(NULL, ",");
+  strcpy(gpuTemp, index);
+  strcat(gpuTemp, "C");
+
+  index = strtok(NULL, ",");
+  strcpy(gpuUsage, index);
+  strcat(gpuUsage, "%, ");
+
+  ramUsage = malloc(strlen(ramUsed) + strlen(ramTotal) + 1);
+  memcpy(ramUsage, ramUsed, strlen(ramUsed));
+  memcpy(ramUsage+strlen(ramUsed), ramTotal, strlen(ramTotal)+1);
+
+  gpuTotal = malloc(strlen(gpuUsage) + strlen(gpuTemp) + 1);
+  memcpy(gpuTotal, gpuUsage, strlen(gpuUsage));
+  memcpy(gpuTotal+strlen(gpuUsage), gpuTemp, strlen(gpuTemp) + 1); 
+}
+
+
+//print data: CPU------------------------------------------------------------
+void cpupercent()
+{
+  display.fillRect(20,11,90,16,BLACK);
+  display.setFont(&FreeSans9pt7b); 
+  display.setTextSize(0);
+  display.setCursor(0,15);
+  display.println("Load");
+  display.setCursor(55,25);
+  display.print(cpuUsage);
+  display.display();
+  
+}
+
+void cputemp()
+{
+  display.fillRect(20,11,90,16,BLACK);
+  display.setFont(&FreeSans9pt7b); 
+  display.setTextSize(0);
+  display.setCursor(0,15);
+  display.println("Temp");
+  display.setCursor(55,25);
+  display.print(cpuTemp);
+  display.display();
+  
+}
+
+//activity checker, copied directly from gnatstats, removed rotation stuff---------------------
 void activityChecker()
 {
   if (millis() - lastActiveConn > lastActiveDelay)
