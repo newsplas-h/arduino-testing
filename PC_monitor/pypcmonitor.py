@@ -9,13 +9,17 @@ import psutil
 import time
 import clr #from pythonnet, reads dlls
 import os
-#import wmi -- only for cpu temp on windows, psutil handles linux, doesn't really work though since openhardwaremonitor needs to be running as well.
+#import wmi -- only for cpu temp on windows, psutil handles linux, doesn't really work though since openhardwaremonito needs to be running as well.
 
-hwtypes = ['Mainboard','SuperIO','CPU','CPU Package','RAM','GpuNvidia','GpuAti','TBalancer','Heatmaster','HDD']
+hwtypes = ['Mainboard','SuperIO','CPU','RAM','GpuNvidia','GpuAti','TBalancer','Heatmaster','HDD']
 senstypes = ['Voltage','Clock','Temperature','Load','Fan','Flow','Control','Level','Factor','Power','Data','SmallData']
 
+def space_pad(number,length):
+    number_length = len(str(number))
+    spaces_to_add = length - number_length
+    return (' ' * spaces_to_add) + str(number)
+
 def initialize_openhardwaremonitor():
-    #needs 32 bit python to run, .dll is 32bit
     file = 'OpenHardwareMonitorLib'
     clr.AddReference(file)
 
@@ -30,29 +34,21 @@ def initialize_openhardwaremonitor():
     handle.Open()
     return handle
 
-def write_gpu(handle):
+def write_data(handle):
+    global gpuTemp
+    global cpuTemp
+    global gpuLoad
     for i in handle.Hardware:
         i.Update()
-        for sensor in i.Sensors:
-            #gpu load/temp
-            if hwtypes[sensor.Hardware.HardwareType] == 'GpuNvidia' and sensor.SensorType == senstypes.index('Load'):
-                ser.write(bytes(str(sensor.Value) + '^', 'utf-8'))
-                
-            elif hwtypes[sensor.Hardware.HardwareType] == 'GpuNvidia' and sensor.SensorType == senstypes.index('Temperature'):
-                ser.write(bytes(str(sensor.Value) + ',', 'utf-8'))
-
-def write_cpu(handle):
-    for i in handle.Hardware:
-        i.Update()
-        for sensor in i.Sensors:
-            #cpu slightly different, adapted from c++ code (gives temp as null? -- to fix, run as administrator)
-            if hwtypes[sensor.Hardware.HardwareType] == 'CPU' and sensor.SensorType == senstypes.index('Temperature'):
+        for sensor in i.Sensors:                
+            if hwtypes[sensor.Hardware.HardwareType] == 'GpuNvidia' and sensor.SensorType == senstypes.index('Temperature'):
+                gpuTemp=int(sensor.Value)
+            elif hwtypes[sensor.Hardware.HardwareType] == 'GpuNvidia' and sensor.SensorType == senstypes.index('Load'):
+                if sensor.Name == 'GPU Core':
+                    gpuLoad=int(sensor.Value)
+            elif hwtypes[sensor.Hardware.HardwareType] == 'CPU' and sensor.SensorType == senstypes.index('Temperature'):
                 if sensor.Name == 'CPU Package':
-                    ser.write(bytes(str(sensor.Value) + ',', 'utf-8'))
-                    print(sensor.Name)
-                    print(sensor.Value)
-            
-                
+                    cpuTemp=int(sensor.Value)
 
 def handle_exit():
     ser.close()
@@ -68,23 +64,32 @@ if __name__ == "__main__":
 
     HardwareHandle = initialize_openhardwaremonitor()
 
+
     while(True):
         #update speed
-        time.sleep(1)
-        
-        
-        #unsupported on windows
-        #print(psutil.sensors_temperatures(fahrenheit=False))
-        cpuUsage = psutil.cpu_percent(None, False)
-        ser.write(bytes('*' + str(cpuUsage) + ',', 'utf-8'))
+        time.sleep(1)        
 
-        ramUsage = psutil.virtual_memory()
-        ramUsed = ramUsage.used / (2**30)
-        ramUsed = round(ramUsed, 1)
-        ramTotal = ramUsage.total / (2**30)
-        ramTotal = round(ramTotal, 1)
-        ser.write(bytes(str(ramUsed) + ',', 'utf-8'))
-        ser.write(bytes(str(ramTotal) + ',', 'utf-8'))
-        write_gpu(HardwareHandle)
-        write_cpu(HardwareHandle)
+        #cpu data
+        cpuLoad = int(psutil.cpu_percent(None, False))
+
+        #run data
+        write_data(HardwareHandle)
+       
+        #cpu strings
+        c_info= str(cpuTemp) + 'C ' + \
+                str(cpuLoad) + '%'
+
+        #gpu strings
+        g_info= str(gpuTemp) + 'C ' + \
+                str(gpuLoad) + '%'
+
+        #arduino string
+        #print(c_info)
+        #print(g_info)
+
+
+        ard_info="C "+(c_info) +"| G "+ (g_info)+"| /"
+        print(ard_info)
+        ser.write(ard_info.encode())
+        
         

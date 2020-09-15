@@ -21,6 +21,8 @@
 //serialevent not completing the string inside of it, not letting loop run --------- need to review loop and serial event reading current data
 //not sure why stringComplete isn't going through, need to look into it more and find out exactly how loops work
 
+//final update: developed own code and own way of going through strings to find data, the majority of difficulty in this project is based in python and not arduino.
+
 
 
 #include <Adafruit_GFX.h>  
@@ -44,15 +46,7 @@ const byte numChars = 32;
 char receivedChars[numChars];
 char tempChars[numChars];
 
-char cpuUsage[numChars];
-char cpuTemp[numChars];
-char ramUsed[numChars];
-char ramTotal[numChars];
-char gpuUsage[numChars];
-char gpuTemp[numChars];
-char* ramUsage;
-char* gpuTotal;
-char* cpuTotal;
+String cpuString= "";
 
 
 //----------------------------------------------------------------------------
@@ -72,25 +66,19 @@ void setup()
 void loop() 
 {
   serialEvent();
+  
   #ifdef enableActivityChecker;
     activityChecker();
   #endif
   lastActiveConn = millis();
   
   if (stringComplete) {
-    display.setCursor(25,25);
-    display.println("suck my balls mate");
-    display.display();
-    strcpy(tempChars, receivedChars);
-    parseData();
-    cpupercent();
+    cpudata();
+    inputString = "";
     stringComplete = false;
-    free(ramUsage);
-    free(gpuTotal);
-    free(cpuTotal);
+   
   }
   
-  inputString = "";
   delay(100);
   
 }
@@ -98,94 +86,30 @@ void loop()
 
 //----------------------------serial events, activity checker all copied directly from gnatstats, few parts removed
 
-//serial events
-void serialEvent()
-{
-  static boolean inProgress = false;
-  static byte index = 0;
-  char startMarker = '*';
-  char endMarker = '^';
-  char curr;
-  
-  while (Serial.available() > 0 && stringComplete == false) {
-    curr = Serial.read();
-    if (inProgress) {
-      if (curr != endMarker) {
-        receivedChars[index] = curr;
-        index++;
-      }
-      else {
-        receivedChars[index] = '\0';
-        inProgress = false;
-        index = 0;
-        stringComplete = true;
-      }
-    } 
-    else if (curr == startMarker) inProgress = true;
+
+void serialEvent() {
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    inputString += inChar;
+    if (inChar == '/') {
+      stringComplete = true;
+    }
   }
 }
 
-//direct copy------------------------------------------------------------
-void parseData() {
-  char* index;
-
-  index = strtok(tempChars, ",");
-  strcpy(cpuUsage, index);
-  strcat(cpuUsage, "%");
-
-  index = strtok(NULL, ",");
-  strcpy(cpuTemp, index);
-  strcat(cpuTemp, "C");
-
-  index = strtok(NULL, ",");
-  strcpy(ramUsed, index);
-  strcat(ramUsed, "/");
-
-  index = strtok(NULL, ",");
-  strcpy(ramTotal, index);
-  strcat(ramTotal, " GB");
-
-  index = strtok(NULL, ",");
-  strcpy(gpuTemp, index);
-  strcat(gpuTemp, "C");
-
-  index = strtok(NULL, ",");
-  strcpy(gpuUsage, index);
-  strcat(gpuUsage, "%, ");
-
-  ramUsage = malloc(strlen(ramUsed) + strlen(ramTotal) + 1);
-  memcpy(ramUsage, ramUsed, strlen(ramUsed));
-  memcpy(ramUsage+strlen(ramUsed), ramTotal, strlen(ramTotal)+1);
-
-  gpuTotal = malloc(strlen(gpuUsage) + strlen(gpuTemp) + 1);
-  memcpy(gpuTotal, gpuUsage, strlen(gpuUsage));
-  memcpy(gpuTotal+strlen(gpuUsage), gpuTemp, strlen(gpuTemp) + 1); 
-}
-
-
 //print data: CPU------------------------------------------------------------
-void cpupercent()
+void cpudata() 
 {
-  display.fillRect(20,11,90,16,BLACK);
+  display.fillRect(20,11,150,20,BLACK);
   display.setFont(&FreeSans9pt7b); 
   display.setTextSize(0);
   display.setCursor(0,15);
-  display.println("Load");
-  display.setCursor(55,25);
-  display.print(cpuUsage);
-  display.display();
-  
-}
-
-void cputemp()
-{
-  display.fillRect(20,11,90,16,BLACK);
-  display.setFont(&FreeSans9pt7b); 
-  display.setTextSize(0);
-  display.setCursor(0,15);
-  display.println("Temp");
-  display.setCursor(55,25);
-  display.print(cpuTemp);
+  display.println("CPU");
+  display.setCursor(35,30);
+  int cpuStringStart = inputString.indexOf("C");
+  int cpuStringLimit = inputString.indexOf("|");
+  String cpuString = inputString.substring(cpuStringStart + 1, cpuStringLimit);
+  display.print(cpuString);
   display.display();
   
 }
@@ -199,7 +123,6 @@ void activityChecker()
   else
     activeConn = true;
   if (!activeConn) {
-//    display.invertDisplay(0);
     display.clearDisplay();
     display.display();
   }
