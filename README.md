@@ -1,10 +1,18 @@
-# arduino-testing
+#pypcmonitor
 
-notes/comments for self
-_____________________________________________________________________________________________________________
-*Serial data is very confusing at first
-*C++/vb.net give me more trouble than expected, even though i have a lot of vba experience
-*the arduino code is slowly becoming more readable, sleeping after running into roadblocks has helped
-*more things i need to learn beyond gnat stats (static? char?)
-*need to figure out how serial data can be read, the entire issue with gnat stats was that I was not able to read
- what data was being sent over serial, i had to guess what it was by the provided code.
+Program that turns openhardwaremonitor data on windows into serial output for an arduino to read. This program is specifically made for the SSD1306 module, and won't look proper on other oled displays that aren't the same resolution.
+
+Usage
+_________
+Upload the sketch to your arduino, and run the python file in administrator mode so that you can access CPU temperature.
+
+Limitations
+________________
+Currently only runs on windows, as it relies on the openhardwaremonitorlib.dll
+
+
+Future Adjustments
+______________________
+*Add GPU screen to arduino code, either by uploading a seperate program or pressing a button to change windows
+*Add Linux support, using psutil rather than a .dll
+*Add instructions for windows users to run program on startup
