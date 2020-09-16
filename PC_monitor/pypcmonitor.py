@@ -88,7 +88,7 @@ if __name__ == "__main__":
         #print(g_info)
 
 
-        ard_info="C "+(c_info) +"| G "+ (g_info)+"| /"
+        ard_info="C "+(c_info) +"| G "+ (g_info)+"^ /"
         print(ard_info)
         ser.write(ard_info.encode())
         

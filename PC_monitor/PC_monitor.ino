@@ -28,6 +28,7 @@
 #include <Adafruit_GFX.h>  
 #include <Adafruit_SSD1306.h> 
 
+#define OLED_RESET -1
 #define enableActivityChecker
 #define lastActiveDelay 8000
 
@@ -36,6 +37,10 @@ Adafruit_SSD1306 display;
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
+//for button--------------------------------------------------------------------
+const int togglePin = 2;
+//set x to 0 so display only starts when program does
+int x=1;
 //variables---------------------------------------------------------------------
 String inputString = "";
 boolean stringComplete = false;
@@ -51,7 +56,7 @@ String cpuString= "";
 
 //----------------------------------------------------------------------------
 void setup()  
-{                
+{ 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); 
   display.clearDisplay(); 
   display.setTextColor(WHITE); 
@@ -60,6 +65,8 @@ void setup()
   display.display();
   Serial.begin(9600);
   inputString.reserve(200);
+  //button
+  pinMode(togglePin, INPUT_PULLUP);
 }  
 
 //main loop----------------------------------------------------------------------------
@@ -71,16 +78,36 @@ void loop()
     activityChecker();
   #endif
   lastActiveConn = millis();
-  
-  if (stringComplete) {
-    cpudata();
-    inputString = "";
-    stringComplete = false;
-   
+
+//main info--------------------
+// if button is pressed, add 1 to x. check if even/odd on each loop
+
+  if (digitalRead(togglePin) == 0){
+    display.clearDisplay();
+    display.display();
+    x=(x+1);
+  }
+
+  //if even
+  if ((x % 2) == 0){
+    if (stringComplete) {
+      gpudata();
+      inputString = "";
+      stringComplete = false;
+      //Serial.println(x);
+    }
   }
   
+  else{
+    if (stringComplete) {
+      cpudata();
+      inputString = "";
+      stringComplete = false;
+      //Serial.println(x);
+    }
+  }
+//end info---------------------
   delay(100);
-  
 }
 
 
@@ -100,7 +127,7 @@ void serialEvent() {
 //print data: CPU------------------------------------------------------------
 void cpudata() 
 {
-  display.fillRect(20,11,150,20,BLACK);
+  display.fillRect(20,5,150,30,BLACK);
   display.setFont(&FreeSans9pt7b); 
   display.setTextSize(0);
   display.setCursor(0,15);
@@ -113,6 +140,25 @@ void cpudata()
   display.display();
   
 }
+
+
+//print data: GPU-------------------------------------------------------------
+void gpudata() 
+{
+  display.fillRect(20,5,150,30,BLACK);
+  display.setFont(&FreeSans9pt7b); 
+  display.setTextSize(0);
+  display.setCursor(0,15);
+  display.println("GPU");
+  display.setCursor(35,30);
+  int gpuStringStart = inputString.indexOf("G");
+  int gpuStringLimit = inputString.indexOf("^");
+  String gpuString = inputString.substring(gpuStringStart + 1, gpuStringLimit);
+  display.print(gpuString);
+  display.display();
+  
+}
+
 
 //activity checker, copied directly from gnatstats, removed rotation stuff---------------------
 void activityChecker()
